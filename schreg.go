@@ -125,7 +125,7 @@ func PostSubjectCompatibilityLevel(compatibility_level compatibility_levels.Comp
 	if err != nil {
 		return compatibility_levels.InvalidCL, err
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
 	err = json.Unmarshal(response_body, &json_receive)
 	if err != nil {
 		return compatibility_levels.InvalidCL, err
@@ -160,7 +160,7 @@ func PostSchema(schema avro.Schema, schema_registry_url string, subject string) 
 	if err != nil {
 		return invalidId, err
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
 	response_body, err = ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return invalidId, err
