@@ -106,7 +106,7 @@ func IsSchemaIdValid(schema_id int) bool {
 	SCHEMA REGISTRY INTERACTION FUNCTIONS
 */
 
-func PostSubjectCompatibilityLevel(compatibility_level compatibility_levels.CompatibilityLevel, schema_registry_url string, subject string) (compatibility_levels.CompatibilityLevel, err) {
+func PostSubjectCompatibilityLevel(compatibility_level compatibility_levels.CompatibilityLevel, schema_registry_url string, subject string) (compatibility_levels.CompatibilityLevel, error) {
 	var json_send, json_receive map[string]interface{}
 	var message_body, response_body []byte
 	var err error
