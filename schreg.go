@@ -6,9 +6,12 @@ import (
 	"errors"
 	"io/ioutil"
 	"net/http"
+	"strconv"
 	"sync"
 
 	"github.com/hamba/avro"
+
+	"github.com/Nuc94/schreg/compatibility_levels"
 )
 
 const (
@@ -102,6 +105,42 @@ func IsSchemaIdValid(schema_id int) bool {
 /*
 	SCHEMA REGISTRY INTERACTION FUNCTIONS
 */
+
+func PostSubjectCompatibilityLevel(compatibility_level compatibility_levels.CompatibilityLevel, schema_registry_url string, subject string) (compatibility_levels.CompatibilityLevel, err) {
+	var json_send, json_receive map[string]interface{}
+	var message_body, response_body []byte
+	var err error
+	var ok bool
+	var response_complev compatibility_levels.CompatibilityLevel
+	var error_code int
+	var error_message string
+	json_send = make(map[string]interface{})
+	json_receive = make(map[string]interface{})
+	json_send["compatibility"] = compatibility_level
+	message_body, err = json.Marshal(json_send)
+	if err != nil {
+		return compatibility_levels.InvalidCL, err
+	}
+	resp, err := http.Post(schema_registry_url+"/config/"+subject, "application/vnd.schemaregistry.v1+json", bytes.NewBuffer(message_body))
+	if err != nil {
+		return compatibility_levels.InvalidCL, err
+	}
+	resp.Body.Close()
+	err = json.Unmarshal(response_body, &json_receive)
+	if err != nil {
+		return compatibility_levels.InvalidCL, err
+	}
+	if response_complev, ok = json_receive["compatibility"].(compatibility_levels.CompatibilityLevel); ok {
+		return response_complev, nil
+	}
+	if error_code, ok = json_receive["error_code"].(int); ok {
+		error_message = json_receive["message"].(string)
+
+		return compatibility_levels.InvalidCL, errors.New("Error: " + strconv.Itoa(error_code) + " message: " + error_message)
+	}
+	return compatibility_levels.InvalidCL, errors.New("Compatibility Level not present in response")
+
+}
 
 func PostSchema(schema avro.Schema, schema_registry_url string, subject string) (int, error) {
 	var result_id int
