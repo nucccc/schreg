@@ -97,19 +97,15 @@ func (client *SchemaRegistryClient) GetSchemaID(schema avro.Schema) (int, error)
 
 /*	Just a function containing a basic logic to check if an id is valid or not */
 func IsSchemaIdValid(schema_id int) bool {
-	if schema_id <= 0 {
-		return false
+	if schema_id > 0 {
+		return true
 	}
-	return true
+	return false
 }
 
 /*
 	SCHEMA REGISTRY INTERACTION FUNCTIONS
 */
-
-type idResponse struct {
-	id int
-}
 
 func PostSubjectCompatibilityLevel(compatibility_level compatibility_levels.CompatibilityLevel, schema_registry_url string, subject string) (compatibility_levels.CompatibilityLevel, error) {
 	var json_send, json_receive map[string]interface{}
@@ -149,10 +145,11 @@ func PostSubjectCompatibilityLevel(compatibility_level compatibility_levels.Comp
 
 func PostSchema(schema avro.Schema, schema_registry_url string, subject string) (int, error) {
 	var result_id int
+	var result_acquiral float64
 	var message_body, response_body []byte
 	var err error
 	var json_send, json_receive map[string]interface{}
-	//var ok bool
+	var ok bool
 	var id_response idResponse
 
 	json_send = make(map[string]interface{})
@@ -176,8 +173,8 @@ func PostSchema(schema avro.Schema, schema_registry_url string, subject string) 
 	if err != nil {
 		return invalidId, err
 	}
-	result_id = id_response.id
-	if IsSchemaIdValid(result_id) {
+	if result_acquiral, ok = json_receive[idResponseKey].(float64); ok {
+		result_id = int(result_acquiral)
 		return result_id, nil
 	}
 	fmt.Println(json_receive)
