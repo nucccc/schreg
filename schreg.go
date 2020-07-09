@@ -53,6 +53,8 @@ func NewSchemaRegistryClient(input_registry_url string, input_dynamic_subject st
 		new_client.dynamic_subject = defaultDynamicSubject
 	}
 
+	PostSubjectCompatibilityLevel(compatibility_levels.NoneCL, new_client.registry_url, new_client.dynamic_subject)
+
 	new_client.schema_cache = make(map[int]avro.Schema)
 	new_client.schema_id_cache = make(map[[32]byte]int)
 	return new_client
@@ -107,40 +109,59 @@ func IsSchemaIdValid(schema_id int) bool {
 	SCHEMA REGISTRY INTERACTION FUNCTIONS
 */
 
+/*	Function aimed at setting the compatibility level on a given subject.
+	It received a predefined compatibility level, the url of a schema registry (to which it will attach the route towards the
+	subject configuration) and the subject.
+	The function will output the resulting compatibility level on the subject, together with eventual errors */
 func PostSubjectCompatibilityLevel(compatibility_level compatibility_levels.CompatibilityLevel, schema_registry_url string, subject string) (compatibility_levels.CompatibilityLevel, error) {
-	var json_send, json_receive map[string]interface{}
+	var json_send, json_receive map[string]interface{} //maps used to hold data being sent to and coming from the jsons on http
 	var message_body, response_body []byte
 	var err error
 	var ok bool
 	var response_complev compatibility_levels.CompatibilityLevel
+	var response_complev_acq string
 	var error_code int
+	var error_code_acquiral float64
 	var error_message string
 	json_send = make(map[string]interface{})
 	json_receive = make(map[string]interface{})
-	json_send["compatibility"] = compatibility_level
+	//I set the message to be sent on http
+	json_send["compatibility"] = string(compatibility_level)
 	message_body, err = json.Marshal(json_send)
 	if err != nil {
 		return compatibility_levels.InvalidCL, err
 	}
-	resp, err := http.Post(schema_registry_url+"/config/"+subject, "application/vnd.schemaregistry.v1+json", bytes.NewBuffer(message_body))
+	//I then send the put request theough an http client
+	client := &http.Client{}
+	req, err := http.NewRequest(http.MethodPut, schema_registry_url+"/config/"+subject, bytes.NewBuffer(message_body))
+	req.Header.Set("Content-Type", "application/vnd.schemaregistry.v1+json")
+	resp, err := client.Do(req)
 	if err != nil {
 		return compatibility_levels.InvalidCL, err
 	}
+	//I then read and umarshal the received response
+	response_body, err = ioutil.ReadAll(resp.Body)
 	defer resp.Body.Close()
+	if err != nil {
+		return compatibility_levels.InvalidCL, err
+	}
 	err = json.Unmarshal(response_body, &json_receive)
 	if err != nil {
 		return compatibility_levels.InvalidCL, err
 	}
-	if response_complev, ok = json_receive["compatibility"].(compatibility_levels.CompatibilityLevel); ok {
+	//once umarshaled, I shall ensure that a compatibility field is present in the response body
+	if response_complev_acq, ok = json_receive["compatibility"].(string); ok {
+		response_complev = compatibility_levels.CompatibilityLevel(response_complev_acq)
 		return response_complev, nil
 	}
-	if error_code, ok = json_receive["error_code"].(int); ok {
+	//in case no compatibility response was found, I shall at first decode an eventual error message, and eventually send the final error message
+	if error_code_acquiral, ok = json_receive["error_code"].(float64); ok {
+		error_code = int(error_code_acquiral)
 		error_message = json_receive["message"].(string)
 
 		return compatibility_levels.InvalidCL, errors.New("Error: " + strconv.Itoa(error_code) + " message: " + error_message)
 	}
 	return compatibility_levels.InvalidCL, errors.New("Compatibility Level not present in response")
-
 }
 
 func PostSchema(schema avro.Schema, schema_registry_url string, subject string) (int, error) {
@@ -150,7 +171,6 @@ func PostSchema(schema avro.Schema, schema_registry_url string, subject string) 
 	var err error
 	var json_send, json_receive map[string]interface{}
 	var ok bool
-	var id_response idResponse
 
 	json_send = make(map[string]interface{})
 	json_receive = make(map[string]interface{})
@@ -169,7 +189,7 @@ func PostSchema(schema avro.Schema, schema_registry_url string, subject string) 
 	if err != nil {
 		return invalidId, err
 	}
-	err = json.Unmarshal(response_body, &id_response)
+	err = json.Unmarshal(response_body, &json_receive)
 	if err != nil {
 		return invalidId, err
 	}
