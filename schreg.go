@@ -152,7 +152,7 @@ func PostSchema(schema avro.Schema, schema_registry_url string, subject string) 
 	var message_body, response_body []byte
 	var err error
 	var json_send, json_receive map[string]interface{}
-	var ok bool
+	//var ok bool
 	var id_response idResponse
 
 	json_send = make(map[string]interface{})
