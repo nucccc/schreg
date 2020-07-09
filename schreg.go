@@ -107,6 +107,10 @@ func IsSchemaIdValid(schema_id int) bool {
 	SCHEMA REGISTRY INTERACTION FUNCTIONS
 */
 
+type idResponse struct {
+	id int
+}
+
 func PostSubjectCompatibilityLevel(compatibility_level compatibility_levels.CompatibilityLevel, schema_registry_url string, subject string) (compatibility_levels.CompatibilityLevel, error) {
 	var json_send, json_receive map[string]interface{}
 	var message_body, response_body []byte
@@ -149,6 +153,8 @@ func PostSchema(schema avro.Schema, schema_registry_url string, subject string) 
 	var err error
 	var json_send, json_receive map[string]interface{}
 	var ok bool
+	var id_response idResponse
+
 	json_send = make(map[string]interface{})
 	json_receive = make(map[string]interface{})
 
@@ -166,11 +172,12 @@ func PostSchema(schema avro.Schema, schema_registry_url string, subject string) 
 	if err != nil {
 		return invalidId, err
 	}
-	err = json.Unmarshal(response_body, &json_receive)
+	err = json.Unmarshal(response_body, &id_response)
 	if err != nil {
 		return invalidId, err
 	}
-	if result_id, ok = json_receive[idResponseKey].(int); ok {
+	result_id = id_response.id
+	if IsSchemaIdValid(result_id) {
 		return result_id, nil
 	}
 	fmt.Println(json_receive)
