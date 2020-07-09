@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strconv"
@@ -172,5 +173,6 @@ func PostSchema(schema avro.Schema, schema_registry_url string, subject string) 
 	if result_id, ok = json_receive[idResponseKey].(int); ok {
 		return result_id, nil
 	}
+	fmt.Println(json_receive)
 	return invalidId, errors.New("id key '" + idResponseKey + "' not found in http response")
 }
