@@ -6,13 +6,15 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"strconv"
 	"sync"
 
 	"github.com/hamba/avro"
 
-	"github.com/Nuc94/schreg/compatibility_levels"
+	//"go_connector/connector/sensorupdate"
+	"schreg/compatibility_levels"
 )
 
 const (
@@ -40,6 +42,7 @@ type SchemaRegistryClient struct {
 /*	Function aimed at providing a new client */
 func NewSchemaRegistryClient(input_registry_url string, input_dynamic_subject string) *SchemaRegistryClient {
 	new_client := new(SchemaRegistryClient)
+	var err error
 
 	if input_registry_url != "" {
 		new_client.registry_url = input_registry_url
@@ -53,10 +56,15 @@ func NewSchemaRegistryClient(input_registry_url string, input_dynamic_subject st
 		new_client.dynamic_subject = defaultDynamicSubject
 	}
 
-	PostSubjectCompatibilityLevel(compatibility_levels.NoneCL, new_client.registry_url, new_client.dynamic_subject)
+	_, err = PostSubjectCompatibilityLevel(compatibility_levels.NoneCL, new_client.registry_url, new_client.dynamic_subject)
+
+	if err != nil {
+		log.Println(err)
+	}
 
 	new_client.schema_cache = make(map[int]avro.Schema)
 	new_client.schema_id_cache = make(map[[32]byte]int)
+	//new_client.GetSchemaID(sensorupdate.SensorUpdateSchema)
 	return new_client
 }
 
@@ -79,6 +87,7 @@ func (client *SchemaRegistryClient) GetSchemaID(schema avro.Schema) (int, error)
 	if schema_in_cache {
 		return result_id, nil
 	}
+	log.Println("Maybe I'm here")
 	//If the schema is not present in cache I shall post it, using the address of the client and its default subject channel
 	result_id, err = PostSchema(schema, client.registry_url, client.dynamic_subject)
 	if err != nil {
@@ -91,6 +100,56 @@ func (client *SchemaRegistryClient) GetSchemaID(schema avro.Schema) (int, error)
 	client.schema_id_cache[schema.Fingerprint()] = result_id
 	client.schema_id_cache_lock.Unlock()
 	return result_id, nil
+}
+
+func (client *SchemaRegistryClient) GetSchemaByID(id int) (avro.Schema, error) {
+	/*var result_id int
+	var err error
+	var schema_in_cache bool
+	//at first we check if the id is present in cache
+	client.schema_id_cache_lock.RLock()
+	result_id, schema_in_cache = client.schema_id_cache[schema.Fingerprint()]
+	client.schema_id_cache_lock.RUnlock()
+	//if the schema was already cached I return it with no error
+	if schema_in_cache {
+		return result_id, nil
+	}
+	log.Println("Maybe I'm here")
+	//If the schema is not present in cache I shall post it, using the address of the client and its default subject channel
+	result_id, err = PostSchema(schema, client.registry_url, client.dynamic_subject)
+	if err != nil {
+		return result_id, err
+	} else if !IsSchemaIdValid(result_id) {
+		return result_id, errors.New("Id received is not valid")
+	}
+	//if a valid id was successfully received, I store it in the cache and return it as a result withour error
+	client.schema_id_cache_lock.Lock()
+	client.schema_id_cache[schema.Fingerprint()] = result_id
+	client.schema_id_cache_lock.Unlock()
+	return result_id, nil*/
+	var result_schema avro.Schema
+	var err error
+	var id_in_cache bool
+
+	client.schema_cache_lock.RLock()
+	result_schema, id_in_cache = client.schema_cache[id]
+	client.schema_cache_lock.RUnlock()
+
+	if id_in_cache {
+		return result_schema, nil
+	}
+
+	result_schema, err = GetSchema(client.registry_url, id)
+
+	if err != nil {
+		return nil, err
+	}
+
+	client.schema_cache_lock.Lock()
+	client.schema_cache[id] = result_schema
+	client.schema_cache_lock.Unlock()
+
+	return result_schema, nil
 }
 
 /*
@@ -132,10 +191,12 @@ func PostSubjectCompatibilityLevel(compatibility_level compatibility_levels.Comp
 		return compatibility_levels.InvalidCL, err
 	}
 	//I then send the put request theough an http client
+	log.Println("Start client creation")
 	client := &http.Client{}
 	req, err := http.NewRequest(http.MethodPut, schema_registry_url+"/config/"+subject, bytes.NewBuffer(message_body))
 	req.Header.Set("Content-Type", "application/vnd.schemaregistry.v1+json")
 	resp, err := client.Do(req)
+	log.Println("Request done")
 	if err != nil {
 		return compatibility_levels.InvalidCL, err
 	}
@@ -180,7 +241,9 @@ func PostSchema(schema avro.Schema, schema_registry_url string, subject string) 
 	if err != nil {
 		return invalidId, err
 	}
+	log.Println("boh")
 	resp, err := http.Post(schema_registry_url+"/subjects/"+subject+"/versions", "application/vnd.schemaregistry.v1+json", bytes.NewBuffer(message_body))
+	log.Println("got it")
 	if err != nil {
 		return invalidId, err
 	}
@@ -199,4 +262,46 @@ func PostSchema(schema avro.Schema, schema_registry_url string, subject string) 
 	}
 	fmt.Println(json_receive)
 	return invalidId, errors.New("id key '" + idResponseKey + "' not found in http response")
+}
+
+func GetSchema(schema_registry_url string, id int) (avro.Schema, error) {
+	var err error
+	var error_message string
+	var response *http.Response
+	var contents []byte
+	var decoded_mess map[string]interface{}
+	var schema_str string
+	var ok bool
+	var schema_result avro.Schema
+
+	response, err = http.Get(schema_registry_url + "/schemas/ids/" + strconv.Itoa(id))
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	contents, err = ioutil.ReadAll(response.Body)
+	if err != nil {
+		return nil, err
+	}
+	decoded_mess = make(map[string]interface{})
+	err = json.Unmarshal(contents, &decoded_mess)
+	if err != nil {
+		return nil, err
+	}
+	if err_code, ok := decoded_mess["error_code"]; ok {
+		error_message = "Error code: " + strconv.Itoa(err_code.(int))
+		if err_mess, ok := decoded_mess["message"]; ok {
+			error_message = error_message + "; message: " + err_mess.(string)
+		}
+		return nil, errors.New(error_message)
+	}
+	schema_str, ok = decoded_mess["schema"].(string)
+	if !ok {
+		return nil, errors.New("Error: schema not present in response")
+	}
+	schema_result, err = avro.Parse(schema_str)
+	if err != nil {
+		return nil, err
+	}
+	return schema_result, nil
 }
