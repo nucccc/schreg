@@ -14,7 +14,7 @@ import (
 	"github.com/hamba/avro"
 
 	//"go_connector/connector/sensorupdate"
-	"schreg/compatibility_levels"
+	"github.com/Nuc94/schreg/compatibility_levels"
 )
 
 const (
