@@ -17,5 +17,5 @@ func TestDefault(t *testing.T) {
 }
 
 func TestConstructor(t *testing.T) {
-	_ = NewSchRegClient(default_config_map)
+	_, _ = NewSchRegClient(default_config_map)
 }

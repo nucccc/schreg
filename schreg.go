@@ -57,7 +57,7 @@ func (conf_map *SchregConfigMap) fill_defaults() {
 
 /*	Struct aimed at representing the Client entitled to interact with the schema registry
 	through http */
-type SchemaRegistryClient struct {
+type SchRegClient struct {
 	registry_url         string
 	enable_dump_subject  bool
 	dump_subject         string
@@ -68,15 +68,19 @@ type SchemaRegistryClient struct {
 	schema_id_cache      map[[32]byte]int
 }
 
-func NewSchRegClient(config_map *SchregConfigMap) (schregcl *SchemaRegistryClient) {
+func NewSchRegClient(config_map *SchregConfigMap) (schregcl *SchRegClient, err error) {
 	config_map.fill_defaults()
-	schregcl = &SchemaRegistryClient{
+	schregcl = &SchRegClient{
 		registry_url:        (*config_map)["registry_url"].(string),
 		enable_dump_subject: (*config_map)["enable_dump_subject"].(bool),
 		enable_cache:        (*config_map)["enable_cache"].(bool),
 	}
 	if schregcl.enable_dump_subject {
 		schregcl.dump_subject = (*config_map)["dump_subject"].(string)
+		err = schregcl.initDumpSubject()
+		if err != nil {
+			return nil, err
+		}
 	}
 	if schregcl.enable_cache {
 		schregcl.schema_cache_lock = sync.RWMutex{}
@@ -84,46 +88,30 @@ func NewSchRegClient(config_map *SchregConfigMap) (schregcl *SchemaRegistryClien
 		schregcl.schema_id_cache_lock = sync.RWMutex{}
 		schregcl.schema_id_cache = make(map[[32]byte]int)
 	}
-	return schregcl
-}
-
-/*	Function aimed at providing a new client */
-func NewSchemaRegistryClient(input_registry_url string, input_dump_subject string) *SchemaRegistryClient {
-	new_client := new(SchemaRegistryClient)
-	var err error
-
-	if input_registry_url != "" {
-		new_client.registry_url = input_registry_url
-	} else {
-		new_client.registry_url = DEFAULT_REGISTRY_URL
-	}
-
-	if input_dump_subject != "" {
-		new_client.dump_subject = input_dump_subject
-	} else {
-		new_client.dump_subject = DEFAULT_DUMP_SUBJECT
-	}
-
-	_, err = PostSubjectCompatibilityLevel(compatibility_levels.NoneCL, new_client.registry_url, new_client.dump_subject)
-
-	if err != nil {
-		log.Println(err)
-	}
-
-	new_client.schema_cache = make(map[int]avro.Schema)
-	new_client.schema_id_cache = make(map[[32]byte]int)
-	//new_client.GetSchemaID(sensorupdate.SensorUpdateSchema)
-	return new_client
+	return schregcl, nil
 }
 
 /*
 	CLIENT METHODS
 */
 
+/*	sets the compatibility level to NONE on the dump subject */
+func (schregcl *SchRegClient) initDumpSubject() error {
+	_, err := PostSubjectCompatibilityLevel(
+		compatibility_levels.NoneCL,
+		schregcl.registry_url,
+		schregcl.dump_subject,
+	)
+	if err != nil {
+		return fmt.Errorf("unable set NONE compatibility level on dump subject: %s, error: %s", schregcl.dump_subject, err)
+	}
+	return nil
+}
+
 /*	Method which return the id in the schema registry of a schema given a hamba avro Schema interface.
 	It will first query the internal cache, and then if the schema is not present, it will send a Post request
 	for the schema id via http to the schema registry. */
-func (client *SchemaRegistryClient) GetSchemaID(schema avro.Schema) (int, error) {
+func (client *SchRegClient) GetSchemaID(schema avro.Schema) (int, error) {
 	var result_id int
 	var err error
 	var schema_in_cache bool
@@ -150,7 +138,7 @@ func (client *SchemaRegistryClient) GetSchemaID(schema avro.Schema) (int, error)
 	return result_id, nil
 }
 
-func (client *SchemaRegistryClient) GetSchemaByID(id int) (avro.Schema, error) {
+func (client *SchRegClient) GetSchemaByID(id int) (avro.Schema, error) {
 	/*var result_id int
 	var err error
 	var schema_in_cache bool
