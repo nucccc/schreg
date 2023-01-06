@@ -14,15 +14,32 @@ import (
 	"github.com/hamba/avro"
 
 	//"go_connector/connector/sensorupdate"
-	"github.com/Nuc94/schreg/compatibility_levels"
+	"github.com/nucccc/schreg/compatibility_levels"
 )
 
 const (
-	defaultRegistryUrl    string = "http://localhost:8081"
-	defaultDynamicSubject string = "dynamic-subject"
-	invalidId             int    = -1
-	idResponseKey         string = "id"
+	DEFAULT_REGISTRY_URL string = "http://localhost:8081"
+	DEFAULT_DUMP_SUBJECT string = "dumpsubject"
+	INVALID_ID           int    = -1
+	ID_RESPONSE_KEY      string = "id"
 )
+
+type SchregConfigMap map[string]interface{}
+
+var default_config_map *SchregConfigMap = &SchregConfigMap{
+	"registry_url":        DEFAULT_REGISTRY_URL,
+	"enable_dump_subject": true,
+	"dump_subject":        DEFAULT_DUMP_SUBJECT,
+	"enable_cache":        true,
+}
+
+type SchemaRegistryConf struct {
+	RegistryUrl       string
+	AllowDumpSubject  bool
+	DumpSubject       string
+	UseCache          bool
+	SchemaCacheByHash bool
+}
 
 /*
 	CLIENT
@@ -47,13 +64,13 @@ func NewSchemaRegistryClient(input_registry_url string, input_dynamic_subject st
 	if input_registry_url != "" {
 		new_client.registry_url = input_registry_url
 	} else {
-		new_client.registry_url = defaultRegistryUrl
+		new_client.registry_url = DEFAULT_REGISTRY_URL
 	}
 
 	if input_dynamic_subject != "" {
 		new_client.dynamic_subject = input_dynamic_subject
 	} else {
-		new_client.dynamic_subject = defaultDynamicSubject
+		new_client.dynamic_subject = DEFAULT_DUMP_SUBJECT
 	}
 
 	_, err = PostSubjectCompatibilityLevel(compatibility_levels.NoneCL, new_client.registry_url, new_client.dynamic_subject)
@@ -239,29 +256,29 @@ func PostSchema(schema avro.Schema, schema_registry_url string, subject string) 
 	json_send["schema"] = schema.String()
 	message_body, err = json.Marshal(json_send)
 	if err != nil {
-		return invalidId, err
+		return INVALID_ID, err
 	}
 	log.Println("boh")
 	resp, err := http.Post(schema_registry_url+"/subjects/"+subject+"/versions", "application/vnd.schemaregistry.v1+json", bytes.NewBuffer(message_body))
 	log.Println("got it")
 	if err != nil {
-		return invalidId, err
+		return INVALID_ID, err
 	}
 	defer resp.Body.Close()
 	response_body, err = ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return invalidId, err
+		return INVALID_ID, err
 	}
 	err = json.Unmarshal(response_body, &json_receive)
 	if err != nil {
-		return invalidId, err
+		return INVALID_ID, err
 	}
-	if result_acquiral, ok = json_receive[idResponseKey].(float64); ok {
+	if result_acquiral, ok = json_receive[ID_RESPONSE_KEY].(float64); ok {
 		result_id = int(result_acquiral)
 		return result_id, nil
 	}
 	fmt.Println(json_receive)
-	return invalidId, errors.New("id key '" + idResponseKey + "' not found in http response")
+	return INVALID_ID, errors.New("id key '" + ID_RESPONSE_KEY + "' not found in http response")
 }
 
 func GetSchema(schema_registry_url string, id int) (avro.Schema, error) {
