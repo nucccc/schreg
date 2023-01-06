@@ -1,9 +1,7 @@
 # schreg
 
-At a certain point in a project I needed a Schema Registry for Kafka which allowing me to ignore compatibility rules in a subject.
+There is a very good schema registry client for kafka, it is [riferrei/srclient](https://github.com/riferrei/srclient).
 
-This little module is designed to work with Cofluent's Schema Registry.
+However it depends on the avro library from linkedin [linkedin/goavro](https://github.com/linkedin/goavro), while at the moment I prefer [hamba/avro](https://github.com/hamba/avro) (since according to these [benchmarks](https://github.com/nrwiersma/avro-benchmarks) is the fastest one available). Schemas in the cache are accessed by means of a string, while the hamba library provides a fingerprint function (returning an array of 32 bytes) for the schema which could give access to the schema id in a much faster way. In addition, sometimes the concept of subject is beyond the scope of specific applications which may need something dirtier, i.e. the capability to have a subject with none compatibility level, and then store in there whatever schema necessary without worrying about compatibility levels, subjects and so on.
 
-This Schema Registry basically posts every new schema to a default subject, whose compatibility level was set to NONE at startup, in order to sink there every schema. This comes useful for Go application needing to regenrate their schemas dynamically according to varying stuff, like user interactions.
-
-The module is designed in order to be integrated with Hamba's [Avro library](https://github.com/hamba/avro) , in order to directl;y gather their structs instead of strings.
+This little module is designed to work with Cofluent's Schema Registry and [hamba/avro](https://github.com/hamba/avro).
