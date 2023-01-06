@@ -108,6 +108,13 @@ func (schregcl *SchRegClient) initDumpSubject() error {
 	return nil
 }
 
+func (schregcl *SchRegClient) DumpSchemaID(schema avro.Schema) (int, error) {
+	if !schregcl.enable_dump_subject {
+		return INVALID_ID, fmt.Errorf("dump subject not enabled")
+	}
+	return schregcl.GetSchemaID(schema, schregcl.dump_subject)
+}
+
 /*	Method which return the id in the schema registry of a schema given a hamba avro Schema interface.
 	It will first query the internal cache, and then if the schema is not present, it will send a Post request
 	for the schema id via http to the schema registry. */
