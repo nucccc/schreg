@@ -15,3 +15,7 @@ func TestDefault(t *testing.T) {
 		t.Errorf("key %s of wrong value in default_config_map, got: %s expected: %s", "registry_url", default_registry_url_str, DEFAULT_REGISTRY_URL)
 	}
 }
+
+func TestConstructor(t *testing.T) {
+	_ = NewSchRegClient(default_config_map)
+}

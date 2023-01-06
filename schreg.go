@@ -20,6 +20,8 @@ import (
 const (
 	DEFAULT_REGISTRY_URL string = "http://localhost:8081"
 	DEFAULT_DUMP_SUBJECT string = "dumpsubject"
+	DEFAULT_ENABLE_DUMP  bool   = false
+	DEFAULT_ENABLE_CACHE bool   = true
 	INVALID_ID           int    = -1
 	ID_RESPONSE_KEY      string = "id"
 )
@@ -33,12 +35,20 @@ var default_config_map *SchregConfigMap = &SchregConfigMap{
 	"enable_cache":        true,
 }
 
-type SchemaRegistryConf struct {
-	RegistryUrl       string
-	AllowDumpSubject  bool
-	DumpSubject       string
-	UseCache          bool
-	SchemaCacheByHash bool
+func (conf_map *SchregConfigMap) fill_defaults() {
+	var present bool
+	if _, present = (*conf_map)["registry_url"]; !present {
+		(*conf_map)["registry_url"] = DEFAULT_REGISTRY_URL
+	}
+	if _, present := (*conf_map)["enable_dump_subject"]; !present {
+		(*conf_map)["enable_dump_subject"] = DEFAULT_ENABLE_DUMP
+	}
+	if _, present = (*conf_map)["dump_subject"]; !present {
+		(*conf_map)["dump_subject"] = DEFAULT_DUMP_SUBJECT
+	}
+	if _, present = (*conf_map)["enable_cache"]; !present {
+		(*conf_map)["enable_cache"] = DEFAULT_ENABLE_CACHE
+	}
 }
 
 /*
@@ -49,15 +59,36 @@ type SchemaRegistryConf struct {
 	through http */
 type SchemaRegistryClient struct {
 	registry_url         string
-	dynamic_subject      string
-	schema_id_cache_lock sync.RWMutex
-	schema_id_cache      map[[32]byte]int
+	enable_dump_subject  bool
+	dump_subject         string
+	enable_cache         bool
 	schema_cache_lock    sync.RWMutex
 	schema_cache         map[int]avro.Schema
+	schema_id_cache_lock sync.RWMutex
+	schema_id_cache      map[[32]byte]int
+}
+
+func NewSchRegClient(config_map *SchregConfigMap) (schregcl *SchemaRegistryClient) {
+	config_map.fill_defaults()
+	schregcl = &SchemaRegistryClient{
+		registry_url:        (*config_map)["registry_url"].(string),
+		enable_dump_subject: (*config_map)["enable_dump_subject"].(bool),
+		enable_cache:        (*config_map)["enable_cache"].(bool),
+	}
+	if schregcl.enable_dump_subject {
+		schregcl.dump_subject = (*config_map)["dump_subject"].(string)
+	}
+	if schregcl.enable_cache {
+		schregcl.schema_cache_lock = sync.RWMutex{}
+		schregcl.schema_cache = make(map[int]avro.Schema)
+		schregcl.schema_id_cache_lock = sync.RWMutex{}
+		schregcl.schema_id_cache = make(map[[32]byte]int)
+	}
+	return schregcl
 }
 
 /*	Function aimed at providing a new client */
-func NewSchemaRegistryClient(input_registry_url string, input_dynamic_subject string) *SchemaRegistryClient {
+func NewSchemaRegistryClient(input_registry_url string, input_dump_subject string) *SchemaRegistryClient {
 	new_client := new(SchemaRegistryClient)
 	var err error
 
@@ -67,13 +98,13 @@ func NewSchemaRegistryClient(input_registry_url string, input_dynamic_subject st
 		new_client.registry_url = DEFAULT_REGISTRY_URL
 	}
 
-	if input_dynamic_subject != "" {
-		new_client.dynamic_subject = input_dynamic_subject
+	if input_dump_subject != "" {
+		new_client.dump_subject = input_dump_subject
 	} else {
-		new_client.dynamic_subject = DEFAULT_DUMP_SUBJECT
+		new_client.dump_subject = DEFAULT_DUMP_SUBJECT
 	}
 
-	_, err = PostSubjectCompatibilityLevel(compatibility_levels.NoneCL, new_client.registry_url, new_client.dynamic_subject)
+	_, err = PostSubjectCompatibilityLevel(compatibility_levels.NoneCL, new_client.registry_url, new_client.dump_subject)
 
 	if err != nil {
 		log.Println(err)
@@ -106,7 +137,7 @@ func (client *SchemaRegistryClient) GetSchemaID(schema avro.Schema) (int, error)
 	}
 	log.Println("Maybe I'm here")
 	//If the schema is not present in cache I shall post it, using the address of the client and its default subject channel
-	result_id, err = PostSchema(schema, client.registry_url, client.dynamic_subject)
+	result_id, err = PostSchema(schema, client.registry_url, client.dump_subject)
 	if err != nil {
 		return result_id, err
 	} else if !IsSchemaIdValid(result_id) {
@@ -133,7 +164,7 @@ func (client *SchemaRegistryClient) GetSchemaByID(id int) (avro.Schema, error) {
 	}
 	log.Println("Maybe I'm here")
 	//If the schema is not present in cache I shall post it, using the address of the client and its default subject channel
-	result_id, err = PostSchema(schema, client.registry_url, client.dynamic_subject)
+	result_id, err = PostSchema(schema, client.registry_url, client.dump_subject)
 	if err != nil {
 		return result_id, err
 	} else if !IsSchemaIdValid(result_id) {
