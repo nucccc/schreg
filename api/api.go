@@ -23,20 +23,32 @@ const CONTENT_TYPE string = "Accept: application/vnd.schemaregistry.v1+json"
 	since some errors are common i'd like to have some standardized code for them
 */
 
-func errInReqBuild(err error) error {
+func errReqBuild(err error) error {
 	return fmt.Errorf("unable to build request, error: %s", err)
 }
 
-func errInReceivingResp(err error) error {
+func errReceivingResp(err error) error {
 	return fmt.Errorf("unable to receive response, error: %s", err)
 }
 
-func errIn404ResNotFound() error {
+func err404ResNotFound() error {
 	return fmt.Errorf("error due to resource not found")
 }
 
-func errInSchRegBackend() error {
+func errSchRegBackend() error {
 	return fmt.Errorf("internal backend error at schema registry")
+}
+
+func errReadRespBody(err error) error {
+	return fmt.Errorf("unable to read response body, error: %s", err)
+}
+
+func errParsingSchema(err error) error {
+	return fmt.Errorf("unable to parse schema body, error: %s", err)
+}
+
+func errParsingJSON(err error) error {
+	return fmt.Errorf("error parsing json, error: %s", err)
 }
 
 /*
@@ -53,25 +65,25 @@ func getSchemaByIDReq(registry_url string, id int) (req *http.Request, err error
 func GetSchemaByID(registry_url string, id int, client *http.Client) (avro.Schema, error) {
 	req, err := getSchemaByIDReq(registry_url, id)
 	if err != nil {
-		return nil, errInReqBuild(err)
+		return nil, errReqBuild(err)
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, errInReceivingResp(err)
+		return nil, errReceivingResp(err)
 	}
 	if resp.StatusCode == 404 {
-		return nil, errIn404ResNotFound()
+		return nil, err404ResNotFound()
 	} else if resp.StatusCode == 500 {
-		return nil, errInSchRegBackend()
+		return nil, errSchRegBackend()
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("unable to read response body, error: %s", err)
+		return nil, errReadRespBody(err)
 	}
 	schema, err := avro.Parse(string(body))
 	if err != nil {
-		return nil, fmt.Errorf("unable to parse schema body, error: %s", err)
+		return nil, errParsingSchema(err)
 	}
 	return schema, nil
 }
@@ -85,16 +97,26 @@ func getSubjectsReq(registry_url string) (req *http.Request, err error) {
 func GetSubjects(registry_url string, client *http.Client) ([]string, error) {
 	req, err := getSubjectsReq(registry_url)
 	if err != nil {
-		return nil, errInReqBuild(err)
+		return nil, errReqBuild(err)
 	}
 	resp, err := client.Do(req)
-	if resp.StatusCode == 500 {
-		return nil, errInSchRegBackend()
+	if err != nil {
+		return nil, errReceivingResp(err)
 	}
-
-	//TO COMPLETE
-
-	return nil, nil
+	if resp.StatusCode == 500 {
+		return nil, errSchRegBackend()
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, errReadRespBody(err)
+	}
+	subjects := make([]string, 0)
+	err = json.Unmarshal(body, &subjects)
+	if err != nil {
+		return nil, errParsingJSON(err)
+	}
+	return subjects, nil
 }
 
 /*	Function aimed at setting the compatibility level on a given subject.
