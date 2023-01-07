@@ -115,6 +115,32 @@ func (schregcl *SchRegClient) DumpSchemaID(schema avro.Schema) (int, error) {
 	return schregcl.GetSchemaID(schema, schregcl.dump_subject)
 }
 
+func (schregcl *SchRegClient) fetchIdFromCache(schema avro.Schema) (result_id int, schema_in_cache bool) {
+	schregcl.schema_id_cache_lock.RLock()
+	defer schregcl.schema_id_cache_lock.RUnlock()
+	result_id, schema_in_cache = schregcl.schema_id_cache[schema.Fingerprint()]
+	return
+}
+
+func (schregcl *SchRegClient) loadIdIntoCache(schema avro.Schema, id int) {
+	schregcl.schema_id_cache_lock.Lock()
+	defer schregcl.schema_id_cache_lock.Unlock()
+	schregcl.schema_id_cache[schema.Fingerprint()] = id
+}
+
+func (schregcl *SchRegClient) fetchSchemaFromCache(id int) (result_schema avro.Schema, id_in_cache bool) {
+	schregcl.schema_cache_lock.RLock()
+	defer schregcl.schema_cache_lock.RUnlock()
+	result_schema, id_in_cache = schregcl.schema_cache[id]
+	return
+}
+
+func (schregcl *SchRegClient) LoadSchemaIntoCache(id int, schema avro.Schema) {
+	schregcl.schema_cache_lock.Lock()
+	defer schregcl.schema_cache_lock.Unlock()
+	schregcl.schema_cache[id] = schema
+}
+
 /*	Method which return the id in the schema registry of a schema given a hamba avro Schema interface.
 	It will first query the internal cache, and then if the schema is not present, it will send a Post request
 	for the schema id via http to the schema registry. */
@@ -124,9 +150,7 @@ func (schregcl *SchRegClient) GetSchemaID(schema avro.Schema, subject string) (i
 	var schema_in_cache bool
 	//at first we check if the id is present in cache, if the cache is enabled
 	if schregcl.enable_cache {
-		schregcl.schema_id_cache_lock.RLock()
-		result_id, schema_in_cache = schregcl.schema_id_cache[schema.Fingerprint()]
-		schregcl.schema_id_cache_lock.RUnlock()
+		result_id, schema_in_cache = schregcl.fetchIdFromCache(schema)
 	}
 	//if the schema was already cached I return it with no error
 	if schema_in_cache {
@@ -141,9 +165,7 @@ func (schregcl *SchRegClient) GetSchemaID(schema avro.Schema, subject string) (i
 	}
 	//if a valid id was successfully received, I store it in the cache and return it as a result withour error
 	if schregcl.enable_cache {
-		schregcl.schema_id_cache_lock.Lock()
-		schregcl.schema_id_cache[schema.Fingerprint()] = result_id
-		schregcl.schema_id_cache_lock.Unlock()
+		schregcl.loadIdIntoCache(schema, result_id)
 	}
 	return result_id, nil
 }
@@ -177,12 +199,11 @@ func (client *SchRegClient) GetSchemaByID(id int) (avro.Schema, error) {
 	var err error
 	var id_in_cache bool
 
-	client.schema_cache_lock.RLock()
-	result_schema, id_in_cache = client.schema_cache[id]
-	client.schema_cache_lock.RUnlock()
-
-	if id_in_cache {
-		return result_schema, nil
+	if client.enable_cache {
+		result_schema, id_in_cache = client.fetchSchemaFromCache(id)
+		if id_in_cache {
+			return result_schema, nil
+		}
 	}
 
 	result_schema, err = GetSchema(client.registry_url, id)
@@ -191,9 +212,9 @@ func (client *SchRegClient) GetSchemaByID(id int) (avro.Schema, error) {
 		return nil, err
 	}
 
-	client.schema_cache_lock.Lock()
-	client.schema_cache[id] = result_schema
-	client.schema_cache_lock.Unlock()
+	if client.enable_cache {
+		client.LoadSchemaIntoCache(id, result_schema)
+	}
 
 	return result_schema, nil
 }
