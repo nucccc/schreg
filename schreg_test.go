@@ -1,11 +1,11 @@
 package schreg
 
 import (
-	"context"
 	"fmt"
 	"testing"
 
-	testcontainers "github.com/testcontainers/testcontainers-go"
+	"github.com/hamba/avro"
+	"github.com/nucccc/schreg/compatibility_levels"
 )
 
 func TestDefault(t *testing.T) {
@@ -24,7 +24,7 @@ func TestConstructor(t *testing.T) {
 }
 
 func TestTestContainer(t *testing.T) {
-	ctx := context.Background()
+	/*ctx := context.Background()
 	req := testcontainers.ContainerRequest{
 		Image:        "confluentinc/cp-schema-registry:5.4.1",
 		ExposedPorts: []string{"8081/tcp"},
@@ -41,5 +41,36 @@ func TestTestContainer(t *testing.T) {
 		if err := schema_reg.Terminate(ctx); err != nil {
 			t.Fatalf("failed to terminate container: %s", err.Error())
 		}
-	}()
+	}()*/
+}
+
+func TestPostSchema(t *testing.T) {
+	//IN THIS TEST I'M GONNA ASSUME A DOCKER COMPOSE IS RUNNING
+
+	str_schema, err := avro.Parse("string")
+	if err != nil {
+		t.Fatalf("not even able to parse an avro string type, got error %s", err)
+	}
+	f1_schema, err := avro.NewField("f1", str_schema, nil)
+	if err != nil {
+		t.Fatalf("not even able to build a field schema, got error %s", err)
+	}
+	f2_schema, err := avro.NewField("f2", str_schema, nil)
+	if err != nil {
+		t.Fatalf("not even able to build a field schema, got error %s", err)
+	}
+	rec_schema, err := avro.NewRecordSchema("rec_schema", "", []*avro.Field{f1_schema, f2_schema})
+
+	_, err = PostSubjectCompatibilityLevel(compatibility_levels.NoneCL, DEFAULT_REGISTRY_URL, DEFAULT_DUMP_SUBJECT)
+	if err != nil {
+		t.Log(err)
+		t.Error(nil)
+	}
+
+	id, err := PostSchema(rec_schema, DEFAULT_REGISTRY_URL, DEFAULT_DUMP_SUBJECT)
+	t.Log(id)
+	if err != nil {
+		t.Log(err)
+		t.Error(nil)
+	}
 }
