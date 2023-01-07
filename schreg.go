@@ -171,30 +171,6 @@ func (schregcl *SchRegClient) GetSchemaID(schema avro.Schema, subject string) (i
 }
 
 func (client *SchRegClient) GetSchemaByID(id int) (avro.Schema, error) {
-	/*var result_id int
-	var err error
-	var schema_in_cache bool
-	//at first we check if the id is present in cache
-	client.schema_id_cache_lock.RLock()
-	result_id, schema_in_cache = client.schema_id_cache[schema.Fingerprint()]
-	client.schema_id_cache_lock.RUnlock()
-	//if the schema was already cached I return it with no error
-	if schema_in_cache {
-		return result_id, nil
-	}
-	log.Println("Maybe I'm here")
-	//If the schema is not present in cache I shall post it, using the address of the client and its default subject channel
-	result_id, err = PostSchema(schema, client.registry_url, client.dump_subject)
-	if err != nil {
-		return result_id, err
-	} else if !IsSchemaIdValid(result_id) {
-		return result_id, errors.New("Id received is not valid")
-	}
-	//if a valid id was successfully received, I store it in the cache and return it as a result withour error
-	client.schema_id_cache_lock.Lock()
-	client.schema_id_cache[schema.Fingerprint()] = result_id
-	client.schema_id_cache_lock.Unlock()
-	return result_id, nil*/
 	var result_schema avro.Schema
 	var err error
 	var id_in_cache bool
