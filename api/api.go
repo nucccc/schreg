@@ -62,7 +62,7 @@ func getSchemaByIDReq(registry_url string, id int) (req *http.Request, err error
 }
 
 /*	the function to get a schema by Id */
-func GetSchemaByID(registry_url string, id int, client *http.Client) (avro.Schema, error) {
+func GetSchemaByID(client *http.Client, registry_url string, id int) (avro.Schema, error) {
 	req, err := getSchemaByIDReq(registry_url, id)
 	if err != nil {
 		return nil, errReqBuild(err)
@@ -94,7 +94,7 @@ func getSubjectsReq(registry_url string) (req *http.Request, err error) {
 	return
 }
 
-func GetSubjects(registry_url string, client *http.Client) ([]string, error) {
+func GetSubjects(client *http.Client, registry_url string) ([]string, error) {
 	req, err := getSubjectsReq(registry_url)
 	if err != nil {
 		return nil, errReqBuild(err)
@@ -117,6 +117,39 @@ func GetSubjects(registry_url string, client *http.Client) ([]string, error) {
 		return nil, errParsingJSON(err)
 	}
 	return subjects, nil
+}
+
+func getVersionsReq(registry_url string, subject string) (req *http.Request, err error) {
+	req_url := fmt.Sprintf("%s/subjects/%s/versions", registry_url, subject)
+	req, err = http.NewRequest(http.MethodGet, req_url, nil)
+	return
+}
+
+func GetSubjectVersions(client *http.Client, registry_url string, subject string) ([]int, error) {
+	req, err := getSubjectsReq(registry_url)
+	if err != nil {
+		return nil, errReqBuild(err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, errReceivingResp(err)
+	}
+	if resp.StatusCode == 404 {
+		return nil, err404ResNotFound()
+	} else if resp.StatusCode == 500 {
+		return nil, errSchRegBackend()
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, errReadRespBody(err)
+	}
+	versions := make([]int, 0)
+	err = json.Unmarshal(body, &versions)
+	if err != nil {
+		return nil, errParsingJSON(err)
+	}
+	return versions, nil
 }
 
 /*	Function aimed at setting the compatibility level on a given subject.
