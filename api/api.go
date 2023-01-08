@@ -35,6 +35,10 @@ func err404ResNotFound() error {
 	return fmt.Errorf("error due to resource not found")
 }
 
+func err422UnprocEntity() error {
+	return fmt.Errorf("error due to unprocessable entity")
+}
+
 func errSchRegBackend() error {
 	return fmt.Errorf("internal backend error at schema registry")
 }
@@ -150,6 +154,107 @@ func GetSubjectVersions(client *http.Client, registry_url string, subject string
 		return nil, errParsingJSON(err)
 	}
 	return versions, nil
+}
+
+func delSubjectReq(registry_url string, subject string) (req *http.Request, err error) {
+	req_url := fmt.Sprintf("%s/subjects/%s", registry_url, subject)
+	req, err = http.NewRequest(http.MethodDelete, req_url, nil)
+	return
+}
+
+func DelSubject(client *http.Client, registry_url string, subject string) ([]int, error) {
+	req, err := delSubjectReq(registry_url, subject)
+	if err != nil {
+		return nil, errReqBuild(err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, errReceivingResp(err)
+	}
+	if resp.StatusCode == 404 {
+		return nil, err404ResNotFound()
+	} else if resp.StatusCode == 500 {
+		return nil, errSchRegBackend()
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, errReadRespBody(err)
+	}
+	versions := make([]int, 0)
+	err = json.Unmarshal(body, &versions)
+	if err != nil {
+		return nil, errParsingJSON(err)
+	}
+	return versions, nil
+}
+
+func getSchemaBySubjVersReq(
+	registry_url string,
+	subject string,
+	version int,
+) (req *http.Request, err error) {
+	req_url := fmt.Sprintf("%s/subjects/%s/versions/%d", registry_url, subject, version)
+	req, err = http.NewRequest(http.MethodGet, req_url, nil)
+	return
+}
+
+type GetSchemaBySubjVersBodyResp struct {
+	Subject    string `json:"subject"`
+	Id         int    `json:"id"`
+	Version    int    `json:"version"`
+	SchemaType string `json:"schemaType"`
+	Schema     string `json:"schema"`
+	avroSchema avro.Schema
+}
+
+func (this *GetSchemaBySubjVersBodyResp) GetAvroSchema() avro.Schema {
+	return this.avroSchema
+}
+
+func (this *GetSchemaBySubjVersBodyResp) parseSchema() (err error) {
+	this.avroSchema, err = avro.Parse(this.Schema)
+	return err
+}
+
+/*	given a subject and a version, it returns the schema and several
+	stuff contained in the body of the response */
+func GetSchemaBySubjVers(
+	client *http.Client,
+	registry_url string,
+	subject string,
+	version int,
+) (*GetSchemaBySubjVersBodyResp, error) {
+	req, err := getSchemaBySubjVersReq(registry_url, subject, version)
+	if err != nil {
+		return nil, errReqBuild(err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, errReceivingResp(err)
+	}
+	if resp.StatusCode == 404 {
+		return nil, err404ResNotFound()
+	} else if resp.StatusCode == 422 {
+		return nil, err422UnprocEntity()
+	} else if resp.StatusCode == 500 {
+		return nil, errSchRegBackend()
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, errReadRespBody(err)
+	}
+	resp_body := new(GetSchemaBySubjVersBodyResp)
+	err = json.Unmarshal(body, &resp_body)
+	if err != nil {
+		return nil, errParsingJSON(err)
+	}
+	err = resp_body.parseSchema()
+	if err != nil {
+		return nil, errParsingSchema(err)
+	}
+	return resp_body, nil
 }
 
 /*	Function aimed at setting the compatibility level on a given subject.
